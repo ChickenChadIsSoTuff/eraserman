@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html>
+<head>
+ <title>Eraser Man</title>
+
+ <style>
+   body{
+     margin:0;
+     background:#111;
+     color:white;
+     font-family:Arial;
+     text-align:center;
+     overflow:hidden;
+   }
+
+   canvas{
+     display:block;
+     margin:auto;
+     background:#222;
+     border:3px solid white;
+   }
+
+   #cutscene{
+     position:absolute;
+     top:0;
+     left:0;
+     width:100%;
+     height:100%;
+     display:none;
+     background:rgba(0,0,0,0.85);
+     color:white;
+     font-size:22px;
+     padding-top:180px;
+     z-index:10;
+   }
+ </style>
+</head>
+
+<body>
+
+<h1>Eraser Man</h1>
+
+<canvas id="game" width="800" height="400"></canvas>
+
+<!-- 🎷 JAZZ MUSIC -->
+<audio id="jazzMusic" loop>
+ <source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=smooth-jazz-10954.mp3" type="audio/mpeg">
+</audio>
+
+<div id="cutscene"></div>
+
+<script>
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const cutscene = document.getElementById("cutscene");
+const jazzMusic = document.getElementById("jazzMusic");
+
+/* ---------------- MUSIC ---------------- */
+
+document.addEventListener("keydown", ()=>{
+
+ if(jazzMusic.paused){
+
+   jazzMusic.volume = 0.4;
+   jazzMusic.play();
+ }
+
+},{ once:true });
+
+/* ---------------- PLAYER ---------------- */
+
+let player = {
+ x:50,
+ y:200,
+ hp:200,
+ state:"Eraser Man",
+ power:0
+};
+
+/* ---------------- GAME STATE ---------------- */
+
+let keys = {};
+let stage = -1;
+let enemies = [];
+
+let boss = {
+ x:650,
+ y:170,
+ hp:250,
+ active:false,
+ attackTimer:0
+};
+
+let attackCooldown = 0;
+let attackPressed = false;
+
+let slashes = [];
+let attackRangeEffect = null;
+
+/* ---------------- INPUT ---------------- */
+
+document.addEventListener("keydown",e=>{
+ keys[e.key] = true;
+});
+
+document.addEventListener("keyup",e=>{
+ keys[e.key] = false;
+});
+
+/* ---------------- CUTSCENES ---------------- */
+
+function showCutscene(lines,nextCallback){
+
+ cutscene.style.display = "block";
+
+ let i = 0;
+
+ function nextLine(){
+
+   if(i < lines.length){
+
+     cutscene.innerHTML =
+     lines[i] +
+     "<br><br><i>(press any key)</i>";
+
+   }else{
+
+     cutscene.style.display = "none";
+
+     document.removeEventListener(
+       "keydown",
+       handler
+     );
+
+     nextCallback();
+     return;
+   }
+ }
+
+ function handler(e){
+   i++;
+   nextLine();
+ }
+
+ document.addEventListener(
+   "keydown",
+   handler
+ );
+
+ nextLine();
+}
+
+/* ---------------- ENEMY SPAWN ---------------- */
+
+function spawnEnemies(){
+
+ enemies = [];
+
+ for(let i=0;i<6+stage*3;i++){
+
+   enemies.push({
+
+     x:200 + Math.random()*500,
+     y:Math.random()*350,
+
+     hp:60 + stage*40,
+
+     speed:0.4 + stage*0.15,
+
+     damage:5 + stage*2,
+
+     wobble:Math.random()*10
+   });
+ }
+
+ if(stage===0){
+
+   showCutscene([
+     "GRAPHITE MINE",
+     "Living pencils emerge from the graphite tunnels..."
+   ],()=>{});
+ }
+
+ if(stage===1){
+
+   showCutscene([
+     "ANCIENT LIBRARY",
+     "Possessed books fly from cursed shelves..."
+   ],()=>{});
+ }
+
+ if(stage===2){
+
+   showCutscene([
+     "FROZEN ART MUSEUM",
+     "Haunted paintings awaken in the icy halls..."
+   ],()=>{});
+ }
+}
+
+/* ---------------- GAME INTRO ---------------- */
+
+showCutscene([
+
+ "The Mona Lisa is in danger...",
+
+ "SIZOR is destroying the world's greatest art...",
+
+ "Only Eraser Man can stop him."
+
+],()=>{
+
+ stage = 0;
+ spawnEnemies();
+
+});
+
+/* ---------------- UPDATE ---------------- */
+
+function update(){
+
+ if(stage < 0) return;
+
+ if(attackCooldown > 0)
+   attackCooldown--;
+
+ /* movement */
+
+ if(keys["ArrowUp"]) player.y -= 3;
+ if(keys["ArrowDown"]) player.y += 3;
+ if(keys["ArrowLeft"]) player.x -= 3;
+ if(keys["ArrowRight"]) player.x += 3;
+
+ /* boundaries */
+
+ if(player.x < 0) player.x = 0;
+ if(player.y < 0) player.y = 0;
+ if(player.x > 770) player.x = 770;
+ if(player.y > 370) player.y = 370;
+
+ /* ---------------- ATTACK ---------------- */
+
+ if((keys["x"] || keys["X"]) &&
+    !attackPressed &&
+    attackCooldown===0){
+
+   attackPressed = true;
+
+   attackCooldown = 10;
+
+   slashes.push({
+     x:player.x + 20,
+     y:player.y + 12,
+     life:10
+   });
+
+   attackRangeEffect = {
+
+     x:player.x,
+     y:player.y - 30,
+
+     width:120,
+     height:90,
+
+     life:10
+   };
+
+   enemies.forEach(e=>{
+
+     let dx = e.x-player.x;
+     let dy = e.y-player.y;
+
+     if(Math.abs(dx)<120 &&
+        Math.abs(dy)<90){
+
+       e.hp -= 15;
+       player.power += 3;
+     }
+   });
+
+   if(boss.active){
+
+     if(Math.abs(boss.x-player.x)<170 &&
+        Math.abs(boss.y-player.y)<130){
+
+       boss.hp -= 250;
+     }
+   }
+ }
+
+ if(!(keys["x"] || keys["X"])){
+   attackPressed = false;
+ }
+
+ /* slash updates */
+
+ slashes.forEach(s=>s.life--);
+
+ slashes =
+   slashes.filter(s=>s.life>0);
+
+ /* attack range updates */
+
+ if(attackRangeEffect){
+
+   attackRangeEffect.life--;
+
+   if(attackRangeEffect.life<=0){
+
+     attackRangeEffect = null;
+   }
+ }
+
+ /* ---------------- ENEMY AI ---------------- */
+
+ enemies.forEach(e=>{
+
+   if(e.x < player.x)
+     e.x += e.speed;
+
+   if(e.x > player.x)
+     e.x -= e.speed;
+
+   if(e.y < player.y)
+     e.y += e.speed;
+
+   if(e.y > player.y)
+     e.y -= e.speed;
+
+   if(Math.abs(e.x-player.x)<25 &&
+      Math.abs(e.y-player.y)<25){
+
+     player.hp -= e.damage;
+   }
+ });
+
+ enemies =
+   enemies.filter(e=>e.hp>0);
+
+ /* ---------------- BOSS AI ---------------- */
+
+ if(boss.active){
+
+   boss.attackTimer++;
+
+   if(boss.x > player.x)
+     boss.x -= 1.2;
+
+   if(boss.x < player.x)
+     boss.x += 1.2;
+
+   if(boss.y > player.y)
+     boss.y -= 1.2;
+
+   if(boss.y < player.y)
+     boss.y += 1.2;
+
+   /* harder attacks */
+
+   if(Math.abs(boss.x-player.x)<70 &&
+      Math.abs(boss.y-player.y)<70){
+
+     player.hp -= 1.2;
+   }
+
+   /* spinning attack */
+
+   if(boss.attackTimer > 180){
+
+     player.hp -= 15;
+
+     boss.attackTimer = 0;
+   }
+ }
+
+ /* progression */
+
+ if(enemies.length===0 &&
+    stage<3){
+
+   stage++;
+
+   if(stage<3)
+     spawnEnemies();
+ }
+
+ /* transformation */
+
+ if(stage===3 &&
+    player.power>60 &&
+    !boss.active){
+
+   boss.active = true;
+
+   player.state =
+     "ERASER HOWLER";
+
+   showCutscene([
+     "FINAL AWAKENING",
+     "ERASER HOWLER ACTIVATED!",
+     "SIZOR APPROACHES..."
+   ],()=>{});
+ }
+
+ /* game over */
+
+ if(player.hp<=0){
+
+   showCutscene([
+     "ERASER MAN HAS FALLEN...",
+     "SIZOR destroys the Mona Lisa..."
+   ],()=>{});
+ }
+}
+
+/* ---------------- WORLD DETAILS ---------------- */
+
+function drawMineDetails(){
+
+ ctx.fillStyle="#555";
+
+ for(let i=0;i<12;i++){
+
+   ctx.beginPath();
+
+   ctx.arc(
+     i*70 + 20,
+     360 + Math.sin(i)*10,
+     15,
+     0,
+     Math.PI*2
+   );
+
+   ctx.fill();
+ }
+
+ ctx.fillStyle="#888";
+
+ for(let i=0;i<6;i++){
+
+   ctx.fillRect(
+     i*120 + 40,
+     80,
+     10,
+     25
+   );
+ }
+}
+
+function drawLibraryDetails(){
+
+ ctx.fillStyle="#3b2412";
+
+ for(let i=0;i<5;i++){
+
+   ctx.fillRect(
+     i*160 + 20,
+     40,
+     40,
+     250
+   );
+ }
+
+ ctx.fillStyle="#884422";
+
+ for(let i=0;i<20;i++){
+
+   ctx.fillRect(
+     (i*35)%800,
+     60 + (i%5)*30,
+     8,
+     20
+   );
+ }
+}
+
+function drawMuseumDetails(){
+
+ for(let i=0;i<4;i++){
+
+   ctx.fillStyle="#c9b07c";
+
+   ctx.fillRect(
+     i*180 + 60,
+     50,
+     70,
+     90
+   );
+
+   ctx.fillStyle="#4455aa";
+
+   ctx.fillRect(
+     i*180 + 70,
+     60,
+     50,
+     70
+   );
+ }
+
+ ctx.fillStyle="rgba(255,255,255,0.05)";
+
+ for(let i=0;i<10;i++){
+
+   ctx.fillRect(
+     i*80,
+     320,
+     40,
+     5
+   );
+ }
+}
+
+/* ---------------- DRAW ---------------- */
+
+function draw(){
+
+ ctx.clearRect(
+   0,
+   0,
+   canvas.width,
+   canvas.height
+ );
+
+ /* backgrounds */
+
+ if(stage===0)
+   ctx.fillStyle="#3b3b3b";
+
+ if(stage===1)
+   ctx.fillStyle="#5a3b1f";
+
+ if(stage===2)
+   ctx.fillStyle="#6b6b8f";
+
+ if(stage===3)
+   ctx.fillStyle="#222";
+
+ ctx.fillRect(
+   0,
+   0,
+   canvas.width,
+   canvas.height
+ );
+
+ /* world details */
+
+ if(stage===0)
+   drawMineDetails();
+
+ if(stage===1)
+   drawLibraryDetails();
+
+ if(stage===2)
+   drawMuseumDetails();
+
+ /* attack range */
+
+ if(attackRangeEffect){
+
+   ctx.fillStyle =
+     "rgba(255,255,255,0.15)";
+
+   ctx.fillRect(
+     attackRangeEffect.x,
+     attackRangeEffect.y,
+     attackRangeEffect.width,
+     attackRangeEffect.height
+   );
+
+   ctx.strokeStyle =
+     "rgba(255,255,255,0.5)";
+
+   ctx.strokeRect(
+     attackRangeEffect.x,
+     attackRangeEffect.y,
+     attackRangeEffect.width,
+     attackRangeEffect.height
+   );
+ }
+
+ /* ---------------- ERASER MAN ---------------- */
+
+ ctx.fillStyle = "white";
+
+ ctx.fillRect(
+   player.x,
+   player.y,
+   22,
+   28
+ );
+
+ ctx.fillStyle = "black";
+
+ ctx.fillRect(player.x+5,player.y+8,3,3);
+ ctx.fillRect(player.x+14,player.y+8,3,3);
+
+ ctx.fillRect(player.x+6,player.y+18,10,2);
+
+ /* ---------------- ENEMIES ---------------- */
+
+ enemies.forEach(e=>{
+
+   let wobbleX =
+     Math.sin(Date.now()/100 + e.wobble) * 2;
+
+   let wobbleY =
+     Math.cos(Date.now()/100 + e.wobble) * 2;
+
+   /* pencils */
+
+   if(stage===0){
+
+     ctx.fillStyle="#f4d03f";
+
+     ctx.fillRect(
+       e.x-6+wobbleX,
+       e.y-18+wobbleY,
+       12,
+       36
+     );
+
+     ctx.fillStyle="#222";
+
+     ctx.beginPath();
+
+     ctx.moveTo(e.x-6+wobbleX,e.y-18+wobbleY);
+     ctx.lineTo(e.x+6+wobbleX,e.y-18+wobbleY);
+     ctx.lineTo(e.x+wobbleX,e.y-30+wobbleY);
+
+     ctx.fill();
+   }
+
+   /* books */
+
+   if(stage===1){
+
+     ctx.fillStyle="#7b241c";
+
+     ctx.fillRect(
+       e.x-12+wobbleX,
+       e.y-16+wobbleY,
+       24,
+       32
+     );
+
+     ctx.fillStyle="#d5d8dc";
+
+     ctx.fillRect(
+       e.x-2+wobbleX,
+       e.y-16+wobbleY,
+       4,
+       32
+     );
+   }
+
+   /* paintings */
+
+   if(stage===2){
+
+     ctx.fillStyle="#d4ac0d";
+
+     ctx.fillRect(
+       e.x-14+wobbleX,
+       e.y-18+wobbleY,
+       28,
+       36
+     );
+
+     ctx.fillStyle="#5dade2";
+
+     ctx.fillRect(
+       e.x-10+wobbleX,
+       e.y-14+wobbleY,
+       20,
+       28
+     );
+   }
+ });
+
+ /* ---------------- SLASH EFFECT ---------------- */
+
+ slashes.forEach(s=>{
+
+   ctx.strokeStyle="white";
+
+   ctx.lineWidth=3;
+
+   ctx.beginPath();
+
+   ctx.moveTo(s.x,s.y);
+   ctx.lineTo(s.x+30,s.y-12);
+
+   ctx.stroke();
+ });
+
+ /* ---------------- SIZOR ---------------- */
+
+ if(boss.active){
+
+   /* scissor handles */
+
+   ctx.strokeStyle="red";
+   ctx.lineWidth=6;
+
+   ctx.beginPath();
+
+   ctx.arc(
+     boss.x,
+     boss.y,
+     15,
+     0,
+     Math.PI*2
+   );
+
+   ctx.stroke();
+
+   ctx.beginPath();
+
+   ctx.arc(
+     boss.x+40,
+     boss.y,
+     15,
+     0,
+     Math.PI*2
+   );
+
+   ctx.stroke();
+
+   /* blades */
+
+   ctx.strokeStyle="silver";
+   ctx.lineWidth=8;
+
+   ctx.beginPath();
+
+   ctx.moveTo(boss.x+20,boss.y+5);
+   ctx.lineTo(boss.x+70,boss.y+60);
+
+   ctx.stroke();
+
+   ctx.beginPath();
+
+   ctx.moveTo(boss.x+20,boss.y-5);
+   ctx.lineTo(boss.x+70,boss.y-60);
+
+   ctx.stroke();
+
+   /* boss hp */
+
+   ctx.fillStyle="white";
+
+   ctx.fillText(
+     "SIZOR HP: " + boss.hp,
+     boss.x-20,
+     boss.y-80
+   );
+ }
+
+ /* ---------------- UI ---------------- */
+
+ ctx.fillStyle="white";
+
+ ctx.fillText(
+   "HP: " + Math.floor(player.hp),
+   10,
+   20
+ );
+
+ ctx.fillText(
+   "Power: " + player.power,
+   10,
+   40
+ );
+
+ ctx.fillText(
+   "Stage: " + stage,
+   10,
+   60
+ );
+
+ ctx.fillText(
+   player.state,
+   10,
+   80
+ );
+
+ /* ending */
+
+ if(boss.hp<=0){
+
+   showCutscene([
+     "SIZOR DEFEATED",
+     "The Mona Lisa is restored...",
+     "ART IS SAVED."
+   ],()=>{});
+ }
+}
+
+/* ---------------- LOOP ---------------- */
+
+function loop(){
+
+ update();
+ draw();
+
+ requestAnimationFrame(loop);
+}
+
+loop();
+
+</script>
+
+</body>
+</html>
+
